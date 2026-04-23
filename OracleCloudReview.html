@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCI Explorer: Tu Guía Interactiva a Oracle Cloud</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            light: '#fdf2f2',
+                            DEFAULT: '#c74634', // Oracle-ish Red
+                            dark: '#8b3124',
+                        },
+                        neutral: {
+                            50: '#fafafa',
+                            100: '#f5f5f5',
+                            800: '#262626',
+                            900: '#171717',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #fafafa; color: #262626; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 40vh;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container { height: 350px; }
+        }
+    </style>
+</head>
+<body class="antialiased h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Chosen Palette: Warm Neutrals (Zinc/Stone) with a refined 'Brand Red' accent (#c74634) to evoke Oracle without being overwhelming. -->
+    <!-- Application Structure Plan: The SPA uses a "Dashboard Explorer" paradigm. Since the user "knows nothing" and needs their notes filled out, a sequential document is boring. Instead, a sidebar navigation groups the vast OCI ecosystem into logical pillars (Core, Data, DBs, Security, etc.). The main view features an interactive Chart.js donut graph to show the scale/distribution of services, acting as a visual anchor. Clicking a pillar reveals a grid of flashcards explaining each service in simple, beginner-friendly terms (filling the "bla bla bla"). Clicking a card could flip it or show a modal, but to keep navigation flat and easy, inline expansion or side-by-side detail view is used. This encourages non-linear exploration and reduces cognitive load. -->
+    <!-- Visualization & Content Choices: 
+         1. Overview Chart: Goal: Inform/Scale -> Donut Chart (Chart.js) -> Shows distribution of services across categories. Justification: Helps a beginner grasp the breadth of OCI visually before diving into text. (Canvas used, NO SVG).
+         2. Category Navigation: Goal: Organize -> Sidebar List -> Filters main content. Justification: Standard, intuitive pattern for hierarchical data.
+         3. Service Explanations: Goal: Inform -> Interactive Grid of Cards -> Presents researched definitions replacing the user's empty notes. Justification: Chunks information into digestible pieces. 
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <!-- Sidebar / Top Nav -->
+    <nav class="bg-neutral-900 text-white w-full md:w-72 flex-shrink-0 md:h-full flex flex-col transition-all duration-300 z-20 shadow-xl">
+        <div class="p-6 bg-brand-dark flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">☁️ OCI Explorer</h1>
+                <p class="text-xs text-brand-light mt-1 opacity-80">De "No sé nada" a Experto</p>
+            </div>
+            <button id="mobileMenuBtn" class="md:hidden text-2xl focus:outline-none">☰</button>
+        </div>
+        <div id="navLinks" class="hidden md:flex flex-col flex-grow overflow-y-auto hide-scroll p-4 space-y-1">
+            <button onclick="showOverview()" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-neutral-800 transition-colors flex items-center gap-3 font-medium text-neutral-300 hover:text-white" data-target="overview">
+                <span>📊</span> Visión General
+            </button>
+            <div class="my-2 border-t border-neutral-800"></div>
+            <!-- Dinamically populated nav items will go here -->
+            <div id="dynamicNav" class="space-y-1"></div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow flex flex-col h-full overflow-hidden bg-neutral-50">
+        
+        <!-- Header -->
+        <header class="bg-white shadow-sm px-8 py-5 flex-shrink-0 z-10">
+            <h2 id="sectionTitle" class="text-3xl font-bold text-neutral-800">Introducción a Oracle Cloud</h2>
+            <p id="sectionDesc" class="text-neutral-500 mt-2 text-sm max-w-3xl">He corregido e investigado a fondo tus apuntes. Explora las categorías de la izquierda para descubrir para qué sirve exactamente cada servicio de OCI con explicaciones fáciles de entender.</p>
+        </header>
+
+        <!-- Scrollable Content -->
+        <div class="flex-grow overflow-y-auto p-8 relative hide-scroll">
+            
+            <!-- OVERVIEW VIEW -->
+            <div id="viewOverview" class="fade-in max-w-5xl mx-auto flex flex-col items-center justify-center min-h-full">
+                <div class="text-center mb-8">
+                    <h3 class="text-2xl font-semibold text-neutral-800 mb-2">El Ecosistema OCI</h3>
+                    <p class="text-neutral-600">Oracle Cloud Infrastructure (OCI) se divide en varios pilares fundamentales. Este gráfico muestra la proporción de servicios en cada área de tus apuntes.</p>
+                </div>
+                
+                <div class="bg-white p-6 rounded-2xl shadow-lg w-full mb-8">
+                    <div class="chart-container">
+                        <canvas id="overviewChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+                    <div class="bg-brand-light p-6 rounded-xl border border-brand/20 text-center cursor-pointer hover:shadow-md transition-shadow" onclick="selectCategory('compute')">
+                        <div class="text-4xl mb-3">💻</div>
+                        <h4 class="font-bold text-brand-dark">Core Infrastructure</h4>
+                        <p class="text-sm text-neutral-700 mt-2">La base de todo: Servidores, Almacenamiento y Redes.</p>
+                    </div>
+                    <div class="bg-blue-50 p-6 rounded-xl border border-blue-100 text-center cursor-pointer hover:shadow-md transition-shadow" onclick="selectCategory('databases')">
+                        <div class="text-4xl mb-3">🗄️</div>
+                        <h4 class="font-bold text-blue-900">Bases de Datos</h4>
+                        <p class="text-sm text-neutral-700 mt-2">Donde la información vive. Autónoma, Exadata y Open Source.</p>
+                    </div>
+                    <div class="bg-emerald-50 p-6 rounded-xl border border-emerald-100 text-center cursor-pointer hover:shadow-md transition-shadow" onclick="selectCategory('security')">
+                        <div class="text-4xl mb-3">🔒</div>
+                        <h4 class="font-bold text-emerald-900">Seguridad & Gob.</h4>
+                        <p class="text-sm text-neutral-700 mt-2">Protección, identidades y control total sobre tu nube.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CATEGORY DETAIL VIEW -->
+            <div id="viewCategory" class="hidden fade-in max-w-6xl mx-auto">
+                
+                <!-- Category Stats / Subheader -->
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white p-6 rounded-xl shadow-sm border border-neutral-100">
+                    <div>
+                        <span id="catIcon" class="text-4xl mr-3 align-middle"></span>
+                        <div class="inline-block align-middle">
+                            <h3 id="catTitle" class="text-2xl font-bold text-neutral-800"></h3>
+                            <p id="catSummary" class="text-neutral-500 text-sm mt-1"></p>
+                        </div>
+                    </div>
+                    <div class="mt-4 md:mt-0 px-4 py-2 bg-neutral-100 rounded-lg text-sm font-semibold text-neutral-600">
+                        Total Servicios: <span id="catCount" class="text-brand">0</span>
+                    </div>
+                </div>
+
+                <!-- Subcategories and Services Grid -->
+                <div id="servicesContainer" class="space-y-12">
+                    <!-- Dinamically injected content -->
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // --- 1. DATA: THE "RESEARCH & CORRECTION" OF THE USER'S NOTES ---
+        // I have structured the user's raw notes into a clean JSON, providing
+        // simple, analogy-driven explanations for all the "bla bla bla"s.
+        const ociData = {
+            compute: {
+                id: 'compute', icon: '💻', title: 'Compute & OS', color: '#3b82f6',
+                summary: 'El músculo de tu nube. Aquí es donde se procesa la información y se ejecutan tus programas.',
+                subcategories: [
+                    {
+                        name: 'Servidores & Procesamiento',
+                        services: [
+                            { name: 'Bare Metal', desc: 'Servidores físicos enteros dedicados SOLO para ti. Sin software intermediario (hipervisor). Te da el máximo rendimiento absoluto y control total. Ideal para bases de datos pesadas o tareas muy específicas que no pueden compartir recursos.' },
+                            { name: 'Virtual Machines (VM)', desc: 'Imagina un gran servidor físico dividido en varias "computadoras virtuales" usando un software llamado hipervisor. Son muy flexibles, más baratas que Bare Metal y puedes elegir cuántos núcleos (OCPUs) y RAM necesitas.' },
+                            { name: 'High Performance Computing (HPC)', desc: 'Supercomputadoras en la nube. Conecta varios servidores Bare Metal con redes de latencia ultra baja. Se usa para simulaciones científicas complejas, renderizado 3D, choque de autos virtuales, etc.' },
+                            { name: 'CPUs & GPUs', desc: 'CPUs son los procesadores normales (intel, AMD, ARM). Las GPUs (Tarjetas Gráficas) son procesadores especializados en matemáticas paralelas, indispensables para entrenar Inteligencia Artificial, Machine Learning o renderizado.' }
+                        ]
+                    },
+                    {
+                        name: 'Contenedores (Containers)',
+                        services: [
+                            { name: 'Containers', desc: 'Empaquetan tu aplicación y todo lo que necesita para funcionar en una sola "caja" ligera. A diferencia de las VMs, no incluyen un sistema operativo completo, lo que las hace rapidísimas de encender y mover.' },
+                            { name: 'Kubernetes (OKE)', desc: 'Oracle Container Engine for Kubernetes. Si tienes cientos de contenedores, necesitas un director de orquesta. Kubernetes automatiza el despliegue, escalado y manejo de esos contenedores. OKE te lo da ya instalado y administrado.' },
+                            { name: 'Service Mesh', desc: 'Una capa de infraestructura que controla cómo se comunican y comparten datos los diferentes contenedores/microservicios entre sí, asegurando que la red sea segura e inteligente.' },
+                            { name: 'Registry (OCIR)', desc: 'El almacén o catálogo privado donde guardas las "imágenes" (plantillas) de tus contenedores antes de desplegarlos en Kubernetes.' }
+                        ]
+                    },
+                    {
+                        name: 'Sistemas Operativos',
+                        services: [
+                            { name: 'Autonomous Linux', desc: 'Un sistema operativo Linux que se actualiza y parchea a sí mismo automáticamente sin tener que apagar el servidor. Te ahorra horas de mantenimiento nocturno.' },
+                            { name: 'OS Mgmt Service', desc: 'Un panel de control para administrar las actualizaciones, parches y seguridad de todos tus sistemas operativos (Linux y Windows) desde un solo lugar.' },
+                            { name: 'Marketplace', desc: 'La "App Store" de OCI. Un catálogo donde puedes instalar con un clic software de terceros, firewalls, o imágenes preconfiguradas directamente en tus servidores.' }
+                        ]
+                    }
+                ]
+            },
+            storage: {
+                id: 'storage', icon: '🗂️', title: 'Storage (Almacenamiento)', color: '#8b5cf6',
+                summary: 'Donde guardas tus datos. Diferentes tipos de discos y almacenes dependiendo de qué tan rápido necesites acceder a ellos.',
+                subcategories: [
+                    {
+                        name: 'Tipos de Almacenamiento',
+                        services: [
+                            { name: 'NVMe (Local)', desc: 'Discos de estado sólido ultra rápidos conectados directamente a la placa madre del servidor físico. Dan la velocidad más extrema, pero si el servidor físico se apaga, pierdes los datos (son temporales).' },
+                            { name: 'Block Storage', desc: 'Como un disco duro externo o USB que le conectas a tu Máquina Virtual. Guarda datos en "bloques". Es el disco principal donde se instala el sistema operativo de tu VM.' },
+                            { name: 'File Storage', desc: 'Una carpeta compartida en red. Varios servidores (VMs) pueden leer y escribir en esta misma "carpeta" al mismo tiempo. Usa protocolos estándar como NFS.' },
+                            { name: 'Object Storage', desc: 'Un almacén infinito y barato para archivos no estructurados (imágenes, videos, backups, documentos). No usa carpetas, sino "Buckets" (cubetas). Accedes a los archivos a través de internet (URLs).' },
+                            { name: 'Archive Storage', desc: 'Una versión mucho más barata de Object Storage, diseñada para datos a los que casi nunca accedes (backups de años pasados por temas legales). Puede tardar horas en devolverte el archivo.' },
+                            { name: 'Data Transfer', desc: 'Cuando tienes Petabytes de datos y subirlos por internet tardaría años, Oracle te manda un disco duro físico gigante a tu empresa, lo llenas, y se los envías por correo para que ellos lo suban a OCI.' }
+                        ]
+                    }
+                ]
+            },
+            networking: {
+                id: 'networking', icon: '🌐', title: 'Networking (Redes)', color: '#06b6d4',
+                summary: 'Las autopistas, puertas y puentes que conectan tus servidores entre sí y con el internet exterior.',
+                subcategories: [
+                    {
+                        name: 'Conectividad Principal',
+                        services: [
+                            { name: 'Virtual Cloud Network (VCN)', desc: 'Tu red privada virtual dentro de OCI. Es como el edificio de tu empresa; tú defines los pasillos (Subnets), las puertas al exterior (Internet Gateways) y quién entra (Security Lists).' },
+                            { name: 'Load Balancer (LB)', desc: 'El oficial de tráfico. Si tienes 5 servidores haciendo lo mismo, el LB recibe el tráfico de internet y lo reparte equitativamente entre los 5 para que ninguno se sature.' },
+                            { name: 'Service Gateway', desc: 'Un túnel secreto. Permite que tus servidores privados accedan a servicios públicos de Oracle (como Object Storage) sin tener que salir al internet público, manteniéndolo 100% seguro.' },
+                            { name: 'FastConnect (FC)', desc: 'Un cable físico directo y privado que conecta el centro de datos de tu empresa directamente con los centros de datos de Oracle. Evitas el internet público, asegurando alta velocidad constante y seguridad extrema.' },
+                            { name: 'VPN (IPSec)', desc: 'Conecta la red de tu oficina con tu red en OCI (VCN) a través del internet público, pero creando un túnel encriptado para que nadie pueda ver la información que viaja.' },
+                            { name: 'Cluster Networking', desc: 'Una red especial de altísima velocidad (RDMA) usada específicamente para conectar los servidores Bare Metal de HPC (High Performance Computing) para que hablen entre ellos en microsegundos.' }
+                        ]
+                    }
+                ]
+            },
+            databases: {
+                id: 'databases', icon: '🗄️', title: 'Bases de Datos', color: '#c74634', // Oracle Red
+                summary: 'La especialidad de la casa. Desde bases de datos autónomas que se manejan solas, hasta opciones Open Source.',
+                subcategories: [
+                    {
+                        name: 'Oracle DataBases',
+                        services: [
+                            { name: 'ATP (Autonomous Transaction Processing)', desc: 'Base de datos inteligente que se ajusta, parchea y repara sola. Optimizada para transacciones rápidas (ej. compras en tiendas, cajeros automáticos, registros rápidos).' },
+                            { name: 'ADW (Autonomous Data Warehouse)', desc: 'Hermana de ATP, pero optimizada para análisis masivos de datos (Business Intelligence, reportes). Lee millones de filas rapidísimo para generar gráficas.' },
+                            { name: 'DBCS VM/BM (DB Cloud Service)', desc: 'Base de datos Oracle tradicional instalada en una Máquina Virtual o Servidor Físico (Bare Metal). Tú tienes el control total del servidor y la base de datos.' },
+                            { name: 'JSON Database', desc: 'Una base de datos autónoma optimizada específicamente para guardar y leer documentos en formato JSON (muy usado por desarrolladores web y apps móviles).' },
+                            { name: 'Exadata Cloud Service', desc: 'El "Ferrari" de las bases de datos. Hardware hiper-especializado construido por Oracle exclusivamente para que las bases de datos vuelen. Todo el poder de Exadata, rentado en la nube.' },
+                            { name: 'Exadata C@C (Cloud at Customer)', desc: 'Oracle lleva la máquina física Exadata y la instala dentro del edificio de TU empresa (para cumplir leyes de privacidad), pero se administra como si estuviera en la nube.' }
+                        ]
+                    },
+                    {
+                        name: 'Distributed & OSS (Open Source)',
+                        services: [
+                            { name: 'HeatWave MySQL', desc: 'Un motor especial para MySQL que permite correr transacciones normales y analítica de datos hiperrápida (gracias a aceleradores en memoria) en la misma base de datos, sin tener que mover datos de un lado a otro.' },
+                            { name: 'Cache (Redis / PostgreSQL)', desc: 'Servicios gestionados de bases de datos de código abierto. OCI se encarga de instalarlas, respaldarlas y mantenerlas, tú solo las usas.' },
+                            { name: 'OpenSearch', desc: 'Motor de búsqueda y análisis distribuido. Sirve para analizar grandes volúmenes de texto (como buscar errores en miles de archivos de logs al instante).' }
+                        ]
+                    }
+                ]
+            },
+            data_ai: {
+                id: 'data_ai', icon: '🧠', title: 'Data & Inteligencia Artificial', color: '#f59e0b',
+                summary: 'Herramientas para extraer valor de tus datos, moverlos, y aplicarles inteligencia cognitiva o generativa.',
+                subcategories: [
+                    {
+                        name: 'Big Data & Integración',
+                        services: [
+                            { name: 'Big Data Service', desc: 'Plataforma para procesar cantidades brutales de datos usando tecnología Hadoop (clústeres). Para analizar datos masivos no estructurados.' },
+                            { name: 'Data Flow', desc: 'Servicio "Serverless" (sin servidores que administrar) para ejecutar Apache Spark. Ejecutas tus algoritmos pesados de procesamiento de datos y solo pagas por los segundos de cálculo.' },
+                            { name: 'Data Integration', desc: 'Herramienta gráfica para hacer ETL (Extraer, Transformar y Cargar). Sacas datos de una fuente, los limpias, y los guardas en un Data Warehouse.' },
+                            { name: 'Data Catalog', desc: 'El índice de la biblioteca. Escanea todos tus repositorios de datos y crea un inventario inteligente (metadatos) para que sepas qué datos tienes y dónde están.' },
+                            { name: 'GoldenGate', desc: 'Herramienta de replicación en tiempo real. Copia datos de una base de datos a otra sin detener el sistema y en milisegundos. Ideal para migraciones sin tiempo de inactividad.' }
+                        ]
+                    },
+                    {
+                        name: 'AI Services (IA Cognitiva)',
+                        services: [
+                            { name: 'Data Science', desc: 'Entorno de trabajo para los Científicos de Datos. Tienen cuadernos Jupyter y máquinas potentes (GPUs) para construir y entrenar sus propios modelos matemáticos.' },
+                            { name: 'Vision', desc: 'IA preentrenada que puede mirar imágenes e identificar objetos, caras, texto dentro de fotos o clasificar el tipo de imagen.' },
+                            { name: 'Language', desc: 'IA que lee texto y puede entender el sentimiento (positivo/negativo), extraer entidades (nombres, lugares), o traducir idiomas.' },
+                            { name: 'Speech', desc: 'Transcribe audio y voz a texto escrito de manera automática (Speech-to-Text).' },
+                            { name: 'Doc. Understanding', desc: 'IA especializada en leer documentos estructurados (como facturas o pasaportes) y extraer los campos clave (ej. sacar el "Total a pagar" de una foto de un recibo).' }
+                        ]
+                    },
+                    {
+                        name: 'Generative AI',
+                        services: [
+                            { name: 'Generative AI', desc: 'Acceso a modelos de lenguaje gigantes (LLMs) de Cohere o Llama. Pueden redactar textos, resumir libros enteros o generar ideas.' },
+                            { name: 'Generative AI Agents', desc: 'Agentes inteligentes que conectan modelos como ChatGPT con los datos privados de TU empresa. Responden preguntas basándose solo en tus manuales o bases de datos.' },
+                            { name: 'Code Assist', desc: 'Un asistente integrado en el editor de código del programador. Le sugiere líneas de código, le explica qué hace un código ajeno o le ayuda a encontrar errores (bugs).' }
+                        ]
+                    }
+                ]
+            },
+            applications: {
+                id: 'applications', icon: '📦', title: 'Aplicaciones & Integración', color: '#10b981',
+                summary: 'Software listo para usar (SaaS), y herramientas para conectar diferentes sistemas sin preocuparte por los servidores.',
+                subcategories: [
+                    {
+                        name: 'Serverless (Sin Servidor)',
+                        services: [
+                            { name: 'Events', desc: 'Un sistema nervioso central. Está alerta. Si pasa algo en la nube (ej. "alguien subió un archivo"), lanza una alerta para que otro sistema reaccione.' },
+                            { name: 'Functions', desc: 'Pequeños fragmentos de código que se ejecutan solo cuando se les llama. No hay un servidor encendido 24/7. Cobran por milisegundo de ejecución.' },
+                            { name: 'API Gateway', desc: 'La puerta principal y guardaespaldas de tus APIs. Controla quién puede consumir tus servicios web, a qué velocidad, y monitorea el uso.' }
+                        ]
+                    },
+                    {
+                        name: 'App Integration',
+                        services: [
+                            { name: 'Integration Cloud (OIC)', desc: 'Herramienta visual para conectar diferentes aplicaciones (ej. conectar Salesforce con Oracle ERP). Viene con cientos de adaptadores pre-hechos.' },
+                            { name: 'Workflow', desc: 'Diseña y automatiza procesos de negocio que requieren aprobación humana (ej. flujo de aprobación de vacaciones).' },
+                            { name: 'Notifications & Email', desc: 'Servicios para enviar correos masivos seguros, mensajes de texto (SMS) o notificaciones a los administradores cuando algo pasa.' }
+                        ]
+                    },
+                    {
+                        name: 'Business & Industry SaaS (Software as a Service)',
+                        services: [
+                            { name: 'ERP, HCM, SCM...', desc: 'Sistemas empresariales completos listos para usarse: ERP (Finanzas), HCM (Recursos Humanos), SCM (Cadena de suministro), Sales (Ventas), Marketing.' },
+                            { name: 'Vertical Industry', desc: 'Aplicaciones SaaS especializadas por industria (ej. Cerner para hospitales, sistemas para hoteles o telecomunicaciones).' }
+                        ]
+                    }
+                ]
+            },
+            analytics: {
+                id: 'analytics', icon: '📈', title: 'Analytics (Analítica)', color: '#ec4899',
+                summary: 'Transforma tus datos en gráficos, dashboards y decisiones de negocio.',
+                subcategories: [
+                    {
+                        name: 'Business Analytics',
+                        services: [
+                            { name: 'Analytics Cloud (OAC)', desc: 'Plataforma para crear dashboards interactivos y reportes visuales con tus datos. Incluye IA que te explica gráficos en texto o te deja preguntar con voz (ej. "¿Cuáles fueron las ventas de ayer?").' },
+                            { name: 'Fusion Analytics', desc: 'Dashboards pre-construidos y listos para usar que se conectan directamente a los sistemas ERP o HCM de Oracle, sin tener que configurar nada desde cero.' }
+                        ]
+                    }
+                ]
+            },
+            governance_sec: {
+                id: 'governance_sec', icon: '🛡️', title: 'Gobernanza, Seguridad & Dev', color: '#64748b',
+                summary: 'Cómo controlas los accesos, proteges la nube de ataques, monitoreas el estado de tus sistemas y desarrollas aplicaciones (Low Code).',
+                subcategories: [
+                    {
+                        name: 'Governance (Administración)',
+                        services: [
+                            { name: 'IAM (Identity & Access Mgmt)', desc: 'El portero del edificio. Controla los usuarios, contraseñas, grupos y define estrictamente QUÉ puede hacer CADA persona.' },
+                            { name: 'Compartments', desc: 'CONCEPTOS CLAVE: Carpetas lógicas para organizar la nube. Puedes meter servidores de HR en un compartimento y de Ventas en otro, asignando permisos distintos a cada carpeta.' },
+                            { name: 'Tagging & Cost Advisor', desc: 'Etiquetas (Tags) para ponerle "nombres" a los recursos (ej. "Proyecto Alpha") para luego filtrar facturas. El Cost Advisor usa IA para decirte dónde estás gastando de más y cómo ahorrar.' }
+                        ]
+                    },
+                    {
+                        name: 'Security (Seguridad)',
+                        services: [
+                            { name: 'Cloud Guard', desc: 'El guardia de seguridad virtual. Escanea constantemente tu nube buscando errores de configuración humanos (ej. "Dejaste esta base de datos pública a internet") y te avisa o lo arregla solo.' },
+                            { name: 'Vault & KMS', desc: 'KMS (Key Management Service) crea y guarda las llaves criptográficas súper seguras. Vault (Bóveda) guarda contraseñas y tokens para que no estén escritos en el código de tus apps.' },
+                            { name: 'Data Safe', desc: 'Auditor de bases de datos. Analiza tus bases de datos, encuentra datos sensibles (tarjetas de crédito, nombres) y evalúa si están en riesgo.' },
+                            { name: 'WAF & DDoS', desc: 'WAF (Web Application Firewall) protege tus páginas web de ataques de hackers. DDoS te protege si millones de computadoras zombie intentan tumbar tu página.' }
+                        ]
+                    },
+                    {
+                        name: 'Observability',
+                        services: [
+                            { name: 'Monitoring & Logging', desc: 'Monitoring revisa la salud (CPU, memoria) y lanza alarmas. Logging guarda los archivos de texto (logs) que escupen las máquinas para diagnosticar errores.' }
+                        ]
+                    },
+                    {
+                        name: 'Low Code & Dev Services',
+                        services: [
+                            { name: 'APEX', desc: 'Plataforma "Low Code" fantástica. Permite crear aplicaciones web modernas, bonitas y seguras en horas, usando casi puro SQL y clics en vez de programar líneas infinitas de código. Totalmente integrada a la base de datos Oracle.' },
+                            { name: 'Infrastructure as Code (IaC)', desc: 'Resource Manager, Terraform y Ansible. En vez de dar clics en la consola para crear 100 servidores, escribes un archivo de texto con las instrucciones y estos servicios construyen la infraestructura automáticamente.' }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        // --- 2. STATE MANAGEMENT & LOGIC ---
+        let currentCategory = 'compute';
+
+        // Initialize the app
+        function init() {
+            renderNav();
+            renderOverviewChart();
+            
+            // Event listener for mobile menu
+            document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+                const navLinks = document.getElementById('navLinks');
+                navLinks.classList.toggle('hidden');
+            });
+
+            // Start on overview
+            showOverview();
+        }
+
+        // Render the sidebar navigation dynamically from data
+        function renderNav() {
+            const navContainer = document.getElementById('dynamicNav');
+            let html = '';
+            
+            for (const key in ociData) {
+                const cat = ociData[key];
+                html += `
+                    <button onclick="selectCategory('${key}')" class="nav-btn w-full text-left px-4 py-3 rounded-lg hover:bg-neutral-800 transition-colors flex items-center gap-3 text-neutral-400 hover:text-white" data-target="${key}">
+                        <span>${cat.icon}</span> 
+                        <span class="text-sm font-medium tracking-wide">${cat.title}</span>
+                    </button>
+                `;
+            }
+            navContainer.innerHTML = html;
+        }
+
+        // Update active states on navigation buttons
+        function updateNavState(targetId) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.target === targetId) {
+                    btn.classList.remove('text-neutral-300', 'text-neutral-400', 'hover:bg-neutral-800');
+                    btn.classList.add('bg-brand', 'text-white', 'shadow-md');
+                } else {
+                    btn.classList.add('text-neutral-400', 'hover:bg-neutral-800');
+                    btn.classList.remove('bg-brand', 'text-white', 'shadow-md');
+                }
+            });
+        }
+
+        // Show the Overview Dashboard (Chart)
+        function showOverview() {
+            document.getElementById('viewCategory').classList.add('hidden');
+            document.getElementById('viewOverview').classList.remove('hidden');
+            document.getElementById('sectionTitle').innerText = 'Introducción a Oracle Cloud';
+            document.getElementById('sectionDesc').innerText = 'He corregido e investigado a fondo tus apuntes. Explora las categorías de la izquierda para descubrir para qué sirve exactamente cada servicio de OCI con explicaciones fáciles de entender.';
+            updateNavState('overview');
+            
+            // On mobile, hide menu after click
+            if(window.innerWidth < 768) document.getElementById('navLinks').classList.add('hidden');
+        }
+
+        // Render the selected category details (The "Research")
+        function selectCategory(categoryId) {
+            currentCategory = categoryId;
+            const data = ociData[categoryId];
+            
+            // Hide overview, show category view
+            document.getElementById('viewOverview').classList.add('hidden');
+            document.getElementById('viewCategory').classList.remove('hidden');
+            
+            // Update Header Texts
+            document.getElementById('sectionTitle').innerText = data.title;
+            document.getElementById('sectionDesc').innerText = 'Explora los servicios de esta categoría. Clic en las tarjetas para aprender más.';
+            
+            // Update Subheader
+            document.getElementById('catIcon').innerText = data.icon;
+            document.getElementById('catTitle').innerText = data.title;
+            document.getElementById('catSummary').innerText = data.summary;
+            
+            updateNavState(categoryId);
+
+            // Render Services
+            const container = document.getElementById('servicesContainer');
+            container.innerHTML = '';
+            let serviceCount = 0;
+
+            data.subcategories.forEach(sub => {
+                serviceCount += sub.services.length;
+                
+                // Subcategory Header
+                const section = document.createElement('div');
+                section.className = 'mb-10';
+                
+                let cardsHtml = '';
+                sub.services.forEach(service => {
+                    cardsHtml += `
+                        <div class="group bg-white border border-neutral-200 p-6 rounded-xl shadow-sm hover:shadow-lg hover:border-brand/40 transition-all duration-300 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-1 h-full bg-brand transform scale-y-0 group-hover:scale-y-100 transition-transform origin-top"></div>
+                            <h4 class="text-lg font-bold text-neutral-800 mb-3 group-hover:text-brand transition-colors">${service.name}</h4>
+                            <p class="text-neutral-600 text-sm leading-relaxed">${service.desc}</p>
+                        </div>
+                    `;
+                });
+
+                section.innerHTML = `
+                    <div class="flex items-center gap-4 mb-6 border-b border-neutral-200 pb-2">
+                        <h3 class="text-xl font-semibold text-neutral-700">${sub.name}</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        ${cardsHtml}
+                    </div>
+                `;
+                container.appendChild(section);
+            });
+
+            document.getElementById('catCount').innerText = serviceCount;
+
+            // On mobile, hide menu after click
+            if(window.innerWidth < 768) document.getElementById('navLinks').classList.add('hidden');
+            
+            // Scroll to top of container
+            document.querySelector('.flex-grow.overflow-y-auto').scrollTop = 0;
+        }
+
+        // --- 3. CHART.JS VISUALIZATION ---
+        function renderOverviewChart() {
+            const ctx = document.getElementById('overviewChart').getContext('2d');
+            
+            // Extract data for chart
+            const labels = [];
+            const dataCounts = [];
+            const backgroundColors = [];
+            
+            for (const key in ociData) {
+                labels.push(ociData[key].title);
+                let count = 0;
+                ociData[key].subcategories.forEach(sub => count += sub.services.length);
+                dataCounts.push(count);
+                backgroundColors.push(ociData[key].color);
+            }
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Número de Servicios',
+                        data: dataCounts,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: { family: "'Segoe UI', sans-serif", size: 12 },
+                                color: '#525252'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(23, 23, 23, 0.9)',
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 13 },
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.label}: ${context.raw} servicios anotados`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '65%',
+                    layout: {
+                        padding: 10
+                    }
+                }
+            });
+        }
+
+        // Run setup
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
